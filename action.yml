@@ -1,0 +1,31 @@
+name: Set up Apple signing
+description: >-
+  Install the Google Cloud KMS PKCS#11 library and write its configuration and
+  the signing certificate, for signing with rcodesign.
+inputs:
+  certificate-pem:
+    description: Signing certificate in PEM format.
+    required: true
+  key-ring:
+    description: Resource name of the Cloud KMS key ring that holds the signing key.
+    required: true
+outputs:
+  certificate-file:
+    description: Path of the signing certificate.
+    value: ${{ steps.setup.outputs.certificate-file }}
+  pkcs11-library:
+    description: Path of the PKCS#11 library.
+    value: ${{ steps.setup.outputs.pkcs11-library }}
+  pkcs11-config:
+    description: Path of the PKCS#11 library configuration, for KMS_PKCS11_CONFIG.
+    value: ${{ steps.setup.outputs.pkcs11-config }}
+runs:
+  using: composite
+  steps:
+    - name: Set up Apple signing
+      id: setup
+      shell: bash
+      run: '"$GITHUB_ACTION_PATH/scripts/setup.sh"'
+      env:
+        CERTIFICATE_PEM: ${{ inputs.certificate-pem }}
+        KEY_RING: ${{ inputs.key-ring }}

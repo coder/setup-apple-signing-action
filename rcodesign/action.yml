@@ -1,0 +1,37 @@
+name: Install rcodesign
+description: Build and install rcodesign (apple-codesign) with PKCS#11 support.
+inputs:
+  rev:
+    description: Git revision of indygreg/apple-platform-rs to build.
+    required: false
+    default: "0ebbd2ef3b96d5adccc30b1cad4deea38cd735c4"
+  toolchain:
+    description: Rust toolchain version to build with.
+    required: false
+    default: "1.100.0"
+outputs:
+  path:
+    description: Path of the built rcodesign binary.
+    value: ${{ steps.build.outputs.path }}
+  sha256:
+    description: SHA-256 checksum of the built rcodesign binary.
+    value: ${{ steps.build.outputs.sha256 }}
+runs:
+  using: composite
+  steps:
+    - name: Build rcodesign
+      id: build
+      shell: bash
+      run: '"$GITHUB_ACTION_PATH/build.sh"'
+      env:
+        RCODESIGN_REV: ${{ inputs.rev }}
+        RUST_TOOLCHAIN: ${{ inputs.toolchain }}
+
+    - name: Install rcodesign
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo install -m 0755 "$RCODESIGN_PATH" /usr/bin/rcodesign
+        rcodesign --version
+      env:
+        RCODESIGN_PATH: ${{ steps.build.outputs.path }}

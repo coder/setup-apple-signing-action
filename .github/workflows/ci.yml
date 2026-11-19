@@ -1,0 +1,126 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GO_VERSION: 1.27.4
+  ACTIONLINT_VERSION: v1.7.12
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build rcodesign
+        id: rcodesign
+        uses: ./rcodesign
+
+      - name: Check rcodesign
+        env:
+          RCODESIGN_PATH: ${{ steps.rcodesign.outputs.path }}
+          RCODESIGN_SHA256: ${{ steps.rcodesign.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          sha256sum -c <<<"$RCODESIGN_SHA256  $RCODESIGN_PATH"
+          cmp "$RCODESIGN_PATH" /usr/bin/rcodesign
+          help="$(rcodesign sign --help)"
+          grep -q -e --pkcs11-library <<<"$help"
+
+      - name: Create a test certificate
+        id: certificate
+        run: |
+          set -euo pipefail
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=test" \
+            -keyout "$RUNNER_TEMP/test.key" -out "$RUNNER_TEMP/test.pem"
+          {
+            echo "pem<<CERTIFICATE"
+            cat "$RUNNER_TEMP/test.pem"
+            echo "CERTIFICATE"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Apple signing
+        id: setup
+        uses: ./
+        with:
+          certificate-pem: ${{ steps.certificate.outputs.pem }}
+          key-ring: projects/test/locations/global/keyRings/test
+
+      - name: Check setup
+        env:
+          CERTIFICATE_FILE: ${{ steps.setup.outputs.certificate-file }}
+          PKCS11_LIBRARY: ${{ steps.setup.outputs.pkcs11-library }}
+          PKCS11_CONFIG: ${{ steps.setup.outputs.pkcs11-config }}
+        run: |
+          set -euo pipefail
+          cmp "$CERTIFICATE_FILE" "$RUNNER_TEMP/test.pem"
+          [[ "$(stat -c %a "$CERTIFICATE_FILE")" == 600 ]]
+          [[ "$(stat -c %a "$PKCS11_CONFIG")" == 600 ]]
+          grep -q -x -F '  - key_ring: "projects/test/locations/global/keyRings/test"' "$PKCS11_CONFIG"
+          [[ "$(stat -c %a "$PKCS11_LIBRARY")" == 755 ]]
+          type="$(file -L "$PKCS11_LIBRARY")"
+          grep -q "ELF 64-bit LSB shared object, x86-64" <<<"$type"
+
+      - name: Check invalid inputs are rejected
+        env:
+          VALID_CERTIFICATE: ${{ steps.certificate.outputs.pem }}
+          VALID_KEY_RING: projects/test/locations/global/keyRings/test
+        run: |
+          set -euo pipefail
+          rejects() {
+            if CERTIFICATE_PEM="$1" KEY_RING="$2" scripts/setup.sh >/dev/null 2>&1; then
+              echo "::error::Accepted an invalid input: $3"
+              exit 1
+            fi
+          }
+          rejects "" "$VALID_KEY_RING" "empty certificate"
+          rejects "not a certificate" "$VALID_KEY_RING" "malformed certificate"
+          rejects "$VALID_CERTIFICATE" "" "empty key ring"
+          rejects "$VALID_CERTIFICATE" "test" "malformed key ring"
+
+  lint:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: shellcheck
+        run: shellcheck scripts/*.sh rcodesign/*.sh
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: actionlint
+        run: go run "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
+
+      - name: Install zizmor
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/zizmor"
+          "$RUNNER_TEMP/zizmor/bin/pip" install --require-hashes --no-deps --only-binary :all: \
+            -r .github/zizmor-requirements.txt
+
+      - name: zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: '"$RUNNER_TEMP/zizmor/bin/zizmor" --format=github .'
