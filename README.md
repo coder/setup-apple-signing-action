@@ -63,7 +63,7 @@ To build `rcodesign` in one job and sign in another, upload the file at the
 
 Builds `rcodesign` from source at a pinned revision of
 `indygreg/apple-platform-rs` with `pkcs11-single-init.patch` applied, and
-installs it to `/usr/bin/rcodesign`.
+installs it to `/usr/bin/rcodesign`. The runner must have `rustup`.
 
 | Input       | Default         | Description                                            |
 |-------------|-----------------|--------------------------------------------------------|

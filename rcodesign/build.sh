@@ -19,13 +19,11 @@ if [[ "$(uname -s)" != "Linux" ]]; then
 	exit 1
 fi
 
-if command -v rustup >/dev/null 2>&1; then
-	rustup toolchain install --profile minimal "$RUST_TOOLCHAIN"
-elif ! command -v cargo >/dev/null 2>&1; then
-	"$retry" curl --proto '=https' --tlsv1.2 -sSfL https://sh.rustup.rs -o "$RUNNER_TEMP/rustup-init.sh"
-	sh "$RUNNER_TEMP/rustup-init.sh" -y --profile minimal --default-toolchain "$RUST_TOOLCHAIN"
-	rm "$RUNNER_TEMP/rustup-init.sh"
+if ! command -v rustup >/dev/null 2>&1; then
+	echo "::error::This action needs rustup on the runner." >&2
+	exit 1
 fi
+rustup toolchain install --profile minimal "$RUST_TOOLCHAIN"
 export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
 
 src="$RUNNER_TEMP/apple-platform-rs"
