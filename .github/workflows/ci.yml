@@ -28,7 +28,7 @@ jobs:
 
       - name: Build rcodesign
         id: rcodesign
-        uses: ./rcodesign
+        uses: $/rcodesign
 
       - name: Check rcodesign
         env:
@@ -55,7 +55,7 @@ jobs:
 
       - name: Set up Apple signing
         id: setup
-        uses: ./
+        uses: $/
         with:
           certificate-pem: ${{ steps.certificate.outputs.pem }}
           key-ring: projects/test/locations/global/keyRings/test
